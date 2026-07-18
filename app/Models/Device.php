@@ -17,6 +17,7 @@ class Device extends Model
         'manufacturer',
         'model',
         'site',
+        'snmp_community',
         'status',
         'last_checked_at',
         'last_seen_up_at',

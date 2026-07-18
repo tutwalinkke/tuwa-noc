@@ -39,6 +39,7 @@ class DeviceController extends Controller
             'manufacturer' => 'nullable|string|max:255',
             'model' => 'nullable|string|max:255',
             'site' => 'nullable|string|max:255',
+            'snmp_community' => 'nullable|string|max:255',
         ]);
 
         $device = Device::create([
@@ -77,6 +78,7 @@ class DeviceController extends Controller
             'manufacturer' => 'nullable|string|max:255',
             'model' => 'nullable|string|max:255',
             'site' => 'nullable|string|max:255',
+            'snmp_community' => 'nullable|string|max:255',
         ]);
 
         $device->update($validated);

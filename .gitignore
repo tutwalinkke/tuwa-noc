@@ -13,3 +13,4 @@
 /public/storage
 /public/hot
 database/database.sqlite
+.phpunit.result.cache

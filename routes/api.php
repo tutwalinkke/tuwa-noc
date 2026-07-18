@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SubnetController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\CustomerController;
 
 Route::prefix('v1')->middleware('identity.auth')->group(function () {
 
@@ -37,5 +38,12 @@ Route::prefix('v1')->middleware('identity.auth')->group(function () {
     Route::get('/invoices', [InvoiceController::class, 'index']);
     Route::get('/invoices/{id}', [InvoiceController::class, 'show']);
     Route::post('/invoices/{invoiceId}/payments', [PaymentController::class, 'store']);
+
+    Route::get('/customers', [CustomerController::class, 'index']);
+    Route::post('/customers', [CustomerController::class, 'store']);
+    Route::get('/customers/{id}', [CustomerController::class, 'show']);
+    Route::patch('/customers/{id}', [CustomerController::class, 'update']);
+    Route::delete('/customers/{id}', [CustomerController::class, 'destroy']);
+    Route::post('/customers/{customerId}/devices', [CustomerController::class, 'linkDevice']);
 
 });

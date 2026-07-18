@@ -17,6 +17,7 @@ class Device extends Model
         'manufacturer',
         'model',
         'site',
+        'customer_id',
         'snmp_community',
         'status',
         'last_checked_at',
@@ -34,5 +35,10 @@ class Device extends Model
     public function interfaces()
     {
         return $this->hasMany(DeviceInterface::class);
+    }
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class);
     }
 }

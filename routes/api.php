@@ -5,6 +5,8 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SubnetController;
+use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\PaymentController;
 
 Route::prefix('v1')->middleware('identity.auth')->group(function () {
 
@@ -30,5 +32,10 @@ Route::prefix('v1')->middleware('identity.auth')->group(function () {
     Route::delete('/subnets/{id}', [SubnetController::class, 'destroy']);
     Route::post('/subnets/{id}/allocate', [SubnetController::class, 'allocate']);
     Route::post('/subnets/{subnetId}/release/{ipId}', [SubnetController::class, 'release']);
+
+    Route::get('/billing/status', [InvoiceController::class, 'billingStatus']);
+    Route::get('/invoices', [InvoiceController::class, 'index']);
+    Route::get('/invoices/{id}', [InvoiceController::class, 'show']);
+    Route::post('/invoices/{invoiceId}/payments', [PaymentController::class, 'store']);
 
 });

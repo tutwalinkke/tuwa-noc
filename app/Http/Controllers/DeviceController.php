@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Device;
+use App\Services\BillingService;
 use Illuminate\Http\Request;
 
 class DeviceController extends Controller
 {
+    public function __construct(protected BillingService $billingService) {}
+
     protected function tenantId(Request $request): int
     {
         return (int) $request->attributes->get('identity_user')['tenant_id'];
@@ -32,6 +35,17 @@ class DeviceController extends Controller
 
     public function store(Request $request)
     {
+        $tenantId = $this->tenantId($request);
+
+        // Super-admin can still add devices to a blocked tenant (e.g.
+        // for support purposes), but ordinary tenant users cannot add
+        // new devices while their account is blocked for non-payment.
+        if (! $this->isSuperAdmin($request) && $this->billingService->isTenantBlocked($tenantId)) {
+            return response()->json([
+                'message' => 'This account is blocked due to an overdue invoice. Please settle your balance to add new devices.',
+            ], 402);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'ip_address' => 'required|ip',
@@ -44,9 +58,11 @@ class DeviceController extends Controller
 
         $device = Device::create([
             ...$validated,
-            'tenant_id' => $this->tenantId($request),
+            'tenant_id' => $tenantId,
             'status' => 'unknown',
         ]);
+
+        $this->billingService->chargeProratedForNewDevice($tenantId);
 
         return response()->json(['device' => $device], 201);
     }

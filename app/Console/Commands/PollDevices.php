@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\BillingAccount;
 use App\Models\Device;
 use App\Models\DeviceEvent;
 use App\Services\AlertService;
@@ -15,7 +16,14 @@ class PollDevices extends Command
 
     public function handle(AlertService $alertService): int
     {
-        $devices = Device::all();
+        $blockedTenantIds = BillingAccount::where('status', 'blocked')->pluck('tenant_id');
+
+        $devices = Device::whereNotIn('tenant_id', $blockedTenantIds)->get();
+
+        if ($blockedTenantIds->isNotEmpty()) {
+            $skippedCount = Device::whereIn('tenant_id', $blockedTenantIds)->count();
+            $this->comment("Skipping {$skippedCount} device(s) belonging to {$blockedTenantIds->count()} blocked tenant(s).");
+        }
 
         if ($devices->isEmpty()) {
             $this->info('No devices to poll.');

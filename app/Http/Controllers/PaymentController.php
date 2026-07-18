@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BillingAccount;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 
 class PaymentController extends Controller
@@ -46,12 +47,17 @@ class PaymentController extends Controller
             'paid_at' => now(),
         ]);
 
+        ActivityLogger::log(
+            $request,
+            "Payment recorded: KSh {$validated['amount']} via {$validated['method']} for invoice #{$invoice->id}",
+            ['type' => 'Payment', 'id' => $payment->id]
+        );
+
         $totalPaid = Payment::where('invoice_id', $invoice->id)->sum('amount');
 
         if ($totalPaid >= $invoice->amount) {
             $invoice->update(['status' => 'paid']);
 
-            // Unblock the tenant if this was the invoice keeping them blocked.
             $account = BillingAccount::where('tenant_id', $invoice->tenant_id)->first();
             $stillHasOverdueInvoices = Invoice::where('tenant_id', $invoice->tenant_id)
                 ->where('status', 'overdue')
@@ -59,6 +65,7 @@ class PaymentController extends Controller
 
             if ($account && $account->status === 'blocked' && ! $stillHasOverdueInvoices) {
                 $account->update(['status' => 'active']);
+                ActivityLogger::log($request, "Tenant unblocked after invoice #{$invoice->id} paid in full");
             }
         }
 

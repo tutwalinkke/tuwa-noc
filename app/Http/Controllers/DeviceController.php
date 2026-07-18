@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Device;
+use App\Services\ActivityLogger;
 use App\Services\BillingService;
 use Illuminate\Http\Request;
 
@@ -37,9 +38,6 @@ class DeviceController extends Controller
     {
         $tenantId = $this->tenantId($request);
 
-        // Super-admin can still add devices to a blocked tenant (e.g.
-        // for support purposes), but ordinary tenant users cannot add
-        // new devices while their account is blocked for non-payment.
         if (! $this->isSuperAdmin($request) && $this->billingService->isTenantBlocked($tenantId)) {
             return response()->json([
                 'message' => 'This account is blocked due to an overdue invoice. Please settle your balance to add new devices.',
@@ -63,6 +61,8 @@ class DeviceController extends Controller
         ]);
 
         $this->billingService->chargeProratedForNewDevice($tenantId);
+
+        ActivityLogger::log($request, "Device created: {$device->name}", ['type' => 'Device', 'id' => $device->id]);
 
         return response()->json(['device' => $device], 201);
     }
@@ -99,13 +99,18 @@ class DeviceController extends Controller
 
         $device->update($validated);
 
+        ActivityLogger::log($request, "Device updated: {$device->name}", ['type' => 'Device', 'id' => $device->id]);
+
         return response()->json(['device' => $device->fresh()]);
     }
 
     public function destroy(Request $request, int $id)
     {
         $device = $this->resolveDevice($request, $id);
+        $name = $device->name;
         $device->delete();
+
+        ActivityLogger::log($request, "Device deleted: {$name}");
 
         return response()->json(['message' => 'Device deleted.']);
     }

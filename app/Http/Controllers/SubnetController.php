@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Subnet;
+use App\Services\ActivityLogger;
 use App\Services\SubnetService;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -68,6 +69,8 @@ class SubnetController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        ActivityLogger::log($request, "Subnet created: {$subnet->cidr}", ['type' => 'Subnet', 'id' => $subnet->id]);
+
         return response()->json([
             'subnet' => $subnet,
             'addresses_generated' => $subnet->ipAddresses()->count(),
@@ -87,7 +90,10 @@ class SubnetController extends Controller
     public function destroy(Request $request, int $id)
     {
         $subnet = $this->resolveSubnet($request, $id);
+        $cidr = $subnet->cidr;
         $subnet->delete();
+
+        ActivityLogger::log($request, "Subnet deleted: {$cidr}");
 
         return response()->json(['message' => 'Subnet deleted.']);
     }
@@ -118,6 +124,8 @@ class SubnetController extends Controller
             return response()->json(['message' => 'No available IP addresses in this subnet.'], 409);
         }
 
+        ActivityLogger::log($request, "IP allocated: {$ip->address} in {$subnet->cidr}", ['type' => 'IpAddress', 'id' => $ip->id]);
+
         return response()->json(['ip_address' => $ip], 201);
     }
 
@@ -126,7 +134,10 @@ class SubnetController extends Controller
         $subnet = $this->resolveSubnet($request, $subnetId);
 
         $ip = $subnet->ipAddresses()->findOrFail($ipId);
+        $address = $ip->address;
         $ip->update(['status' => 'available', 'device_id' => null, 'label' => null]);
+
+        ActivityLogger::log($request, "IP released: {$address} in {$subnet->cidr}");
 
         return response()->json(['ip_address' => $ip->fresh()]);
     }

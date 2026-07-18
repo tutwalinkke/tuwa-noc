@@ -31,7 +31,10 @@ class DashboardController extends Controller
             $eventQuery->where('tenant_id', $tenantId);
         }
 
-        $devices = $deviceQuery->orderBy('name')->get();
+        $devices = $deviceQuery
+            ->with(['interfaces.latestMetric'])
+            ->orderBy('name')
+            ->get();
 
         // Uptime % per device: proportion of logged events where the
         // device was recovering (up) vs going down, over its total
@@ -46,6 +49,29 @@ class DashboardController extends Controller
             $device->uptime_percent = $totalEvents > 0
                 ? round((1 - ($downEvents / max($totalEvents, 1))) * 100, 1)
                 : null;
+
+            // Flatten each interface down to just what a dashboard needs —
+            // name, operational status, and current throughput — rather
+            // than exposing the full raw metric history per request.
+            $device->interfaces_summary = $device->interfaces->map(function ($iface) {
+                $metric = $iface->latestMetric;
+
+                return [
+                    'name' => $iface->name,
+                    'status' => $metric?->oper_status,
+                    'in_bps' => $metric?->in_bps,
+                    'out_bps' => $metric?->out_bps,
+                    'polled_at' => $metric?->polled_at,
+                ];
+            })->values();
+
+            // Total current throughput across all interfaces on this
+            // device — the single "RX data / TX data" style headline
+            // number a dashboard card would show.
+            $device->total_in_bps = $device->interfaces_summary->sum('in_bps');
+            $device->total_out_bps = $device->interfaces_summary->sum('out_bps');
+
+            unset($device->interfaces);
         });
 
         $summary = [
@@ -58,6 +84,9 @@ class DashboardController extends Controller
         $summary['health_percent'] = $summary['devices_total'] > 0
             ? round(($summary['devices_up'] / $summary['devices_total']) * 100, 1)
             : null;
+
+        $summary['total_in_bps'] = $devices->sum('total_in_bps');
+        $summary['total_out_bps'] = $devices->sum('total_out_bps');
 
         $eventSummary = [
             'total' => (clone $eventQuery)->count(),

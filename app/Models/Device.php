@@ -30,4 +30,9 @@ class Device extends Model
             'last_seen_up_at' => 'datetime',
         ];
     }
+
+    public function interfaces()
+    {
+        return $this->hasMany(DeviceInterface::class);
+    }
 }

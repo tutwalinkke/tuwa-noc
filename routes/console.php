@@ -9,3 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('devices:poll')->everyMinute()->withoutOverlapping();
+Schedule::command('devices:poll-snmp')->everyFiveMinutes()->withoutOverlapping();

@@ -8,6 +8,7 @@ use App\Http\Controllers\SubnetController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\ActivityController;
 
 Route::prefix('v1')->middleware('identity.auth')->group(function () {
 
@@ -45,5 +46,7 @@ Route::prefix('v1')->middleware('identity.auth')->group(function () {
     Route::patch('/customers/{id}', [CustomerController::class, 'update']);
     Route::delete('/customers/{id}', [CustomerController::class, 'destroy']);
     Route::post('/customers/{customerId}/devices', [CustomerController::class, 'linkDevice']);
+
+    Route::get('/activity', [ActivityController::class, 'index']);
 
 });

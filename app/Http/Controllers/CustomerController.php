@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 
 class CustomerController extends Controller
@@ -54,6 +55,8 @@ class CustomerController extends Controller
             'status' => 'active',
         ]);
 
+        ActivityLogger::log($request, "Customer created: {$customer->name}", ['type' => 'Customer', 'id' => $customer->id]);
+
         return response()->json(['customer' => $customer], 201);
     }
 
@@ -81,13 +84,18 @@ class CustomerController extends Controller
 
         $customer->update($validated);
 
+        ActivityLogger::log($request, "Customer updated: {$customer->name}", ['type' => 'Customer', 'id' => $customer->id]);
+
         return response()->json(['customer' => $customer->fresh()]);
     }
 
     public function destroy(Request $request, int $id)
     {
         $customer = $this->resolveCustomer($request, $id);
+        $name = $customer->name;
         $customer->delete();
+
+        ActivityLogger::log($request, "Customer deleted: {$name}");
 
         return response()->json(['message' => 'Customer deleted.']);
     }
@@ -112,6 +120,8 @@ class CustomerController extends Controller
         }
 
         $device->update(['customer_id' => $customer->id]);
+
+        ActivityLogger::log($request, "Device '{$device->name}' linked to customer {$customer->name}", ['type' => 'Device', 'id' => $device->id]);
 
         return response()->json(['device' => $device->fresh()]);
     }

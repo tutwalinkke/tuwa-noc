@@ -4,15 +4,16 @@ namespace App\Console\Commands;
 
 use App\Models\Device;
 use App\Models\DeviceEvent;
+use App\Services\AlertService;
 use Illuminate\Console\Command;
 
 class PollDevices extends Command
 {
     protected $signature = 'devices:poll';
 
-    protected $description = 'Ping every device, update its status, and log an event on any state change.';
+    protected $description = 'Ping every device, update its status, log an event on any state change, and alert on critical events.';
 
-    public function handle(): int
+    public function handle(AlertService $alertService): int
     {
         $devices = Device::all();
 
@@ -39,11 +40,12 @@ class PollDevices extends Command
 
             $device->update($updates);
 
-            // Only log an event when the status actually changed —
-            // avoids flooding the table with a row every minute for
-            // a device that's just sitting there healthy.
             if ($previousStatus !== $newStatus) {
-                $this->logStatusChangeEvent($device, $previousStatus, $newStatus);
+                $event = $this->logStatusChangeEvent($device, $previousStatus, $newStatus);
+
+                if ($event->severity === 'critical') {
+                    $alertService->notifyDeviceDown($device, $event->message);
+                }
             }
 
             $statusLabel = $isUp ? '<info>UP</info>' : '<error>DOWN</error>';
@@ -54,7 +56,7 @@ class PollDevices extends Command
         return self::SUCCESS;
     }
 
-    protected function logStatusChangeEvent(Device $device, ?string $previousStatus, string $newStatus): void
+    protected function logStatusChangeEvent(Device $device, ?string $previousStatus, string $newStatus): DeviceEvent
     {
         if ($newStatus === 'down') {
             $severity = 'critical';
@@ -67,7 +69,7 @@ class PollDevices extends Command
             $message = "{$device->name} status changed to {$newStatus}.";
         }
 
-        DeviceEvent::create([
+        return DeviceEvent::create([
             'device_id' => $device->id,
             'tenant_id' => $device->tenant_id,
             'severity' => $severity,

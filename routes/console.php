@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 Schedule::command('devices:poll')->everyMinute()->withoutOverlapping();
 Schedule::command('devices:poll-snmp')->everyFiveMinutes()->withoutOverlapping();
+
+Schedule::command('billing:generate-invoices')->dailyAt('01:00')->withoutOverlapping();
+Schedule::command('billing:process-overdue')->dailyAt('02:00')->withoutOverlapping();

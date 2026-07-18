@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\SubnetController;
 
 Route::prefix('v1')->middleware('identity.auth')->group(function () {
 
@@ -22,5 +23,12 @@ Route::prefix('v1')->middleware('identity.auth')->group(function () {
     Route::get('/devices/{id}', [DeviceController::class, 'show']);
     Route::patch('/devices/{id}', [DeviceController::class, 'update']);
     Route::delete('/devices/{id}', [DeviceController::class, 'destroy']);
+
+    Route::get('/subnets', [SubnetController::class, 'index']);
+    Route::post('/subnets', [SubnetController::class, 'store']);
+    Route::get('/subnets/{id}', [SubnetController::class, 'show']);
+    Route::delete('/subnets/{id}', [SubnetController::class, 'destroy']);
+    Route::post('/subnets/{id}/allocate', [SubnetController::class, 'allocate']);
+    Route::post('/subnets/{subnetId}/release/{ipId}', [SubnetController::class, 'release']);
 
 });

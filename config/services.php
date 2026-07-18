@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+
+    'identity' => [
+        'url' => env('IDENTITY_API_URL', 'https://identity.tuwalink.com/api/v1'),
+    ],
 ];

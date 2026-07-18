@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 use App\Http\Controllers\DeviceController;
+use App\Http\Controllers\DashboardController;
 
 Route::prefix('v1')->middleware('identity.auth')->group(function () {
 
@@ -13,6 +14,8 @@ Route::prefix('v1')->middleware('identity.auth')->group(function () {
             'identity_roles' => $request->attributes->get('identity_roles'),
         ]);
     });
+
+    Route::get('/dashboard', [DashboardController::class, 'index']);
 
     Route::get('/devices', [DeviceController::class, 'index']);
     Route::post('/devices', [DeviceController::class, 'store']);

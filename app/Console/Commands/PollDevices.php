@@ -3,13 +3,14 @@
 namespace App\Console\Commands;
 
 use App\Models\Device;
+use App\Models\DeviceEvent;
 use Illuminate\Console\Command;
 
 class PollDevices extends Command
 {
     protected $signature = 'devices:poll';
 
-    protected $description = 'Ping every device and update its status, last_checked_at, and last_seen_up_at.';
+    protected $description = 'Ping every device, update its status, and log an event on any state change.';
 
     public function handle(): int
     {
@@ -24,9 +25,11 @@ class PollDevices extends Command
 
         foreach ($devices as $device) {
             $isUp = $this->ping($device->ip_address);
+            $newStatus = $isUp ? 'up' : 'down';
+            $previousStatus = $device->status;
 
             $updates = [
-                'status' => $isUp ? 'up' : 'down',
+                'status' => $newStatus,
                 'last_checked_at' => now(),
             ];
 
@@ -36,6 +39,13 @@ class PollDevices extends Command
 
             $device->update($updates);
 
+            // Only log an event when the status actually changed —
+            // avoids flooding the table with a row every minute for
+            // a device that's just sitting there healthy.
+            if ($previousStatus !== $newStatus) {
+                $this->logStatusChangeEvent($device, $previousStatus, $newStatus);
+            }
+
             $statusLabel = $isUp ? '<info>UP</info>' : '<error>DOWN</error>';
             $this->line("  {$device->name} ({$device->ip_address}) — {$statusLabel}");
         }
@@ -44,12 +54,31 @@ class PollDevices extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Ping a host using the system's ping binary.
-     * -c 1: send exactly 1 packet
-     * -W 2: wait max 2 seconds for a reply
-     * Returns true if the host responded, false otherwise.
-     */
+    protected function logStatusChangeEvent(Device $device, ?string $previousStatus, string $newStatus): void
+    {
+        if ($newStatus === 'down') {
+            $severity = 'critical';
+            $message = "{$device->name} went offline (no response to ICMP ping).";
+        } elseif ($newStatus === 'up' && $previousStatus === 'down') {
+            $severity = 'info';
+            $message = "{$device->name} recovered and is back online.";
+        } else {
+            $severity = 'info';
+            $message = "{$device->name} status changed to {$newStatus}.";
+        }
+
+        DeviceEvent::create([
+            'device_id' => $device->id,
+            'tenant_id' => $device->tenant_id,
+            'severity' => $severity,
+            'type' => 'status_change',
+            'previous_status' => $previousStatus,
+            'new_status' => $newStatus,
+            'message' => $message,
+            'created_at' => now(),
+        ]);
+    }
+
     protected function ping(string $ip): bool
     {
         $escapedIp = escapeshellarg($ip);

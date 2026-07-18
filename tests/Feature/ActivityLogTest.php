@@ -10,14 +10,44 @@ class ActivityLogTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function actingAsIdentityUser(int $tenantId, array $roles = ['operator'], string $token = 'fake-token'): string
+    /**
+     * Maps token => identity payload. A single Http::fake() closure
+     * (registered once per test, refreshed as identities are added)
+     * inspects the actual Authorization header on each /me request and
+     * returns the matching identity — unlike a static Http::fake()
+     * response, which would return the SAME identity regardless of
+     * which token was sent, silently breaking any test simulating two
+     * different actors in the same test method.
+     */
+    protected array $identitiesByToken = [];
+
+    protected function actingAsIdentityUser(int $tenantId, array $roles = ['operator'], ?string $token = null): string
     {
+        $token = $token ?? 'token-' . count($this->identitiesByToken);
+
+        $this->identitiesByToken[$token] = [
+            'user' => [
+                'id' => count($this->identitiesByToken) + 1,
+                'tenant_id' => $tenantId,
+                'name' => 'Test User',
+                'email' => 'test@example.com',
+                'status' => 'active',
+            ],
+            'roles' => $roles,
+            'permissions' => [],
+        ];
+
         Http::fake([
-            '*/api/v1/me' => Http::response([
-                'user' => ['id' => 1, 'tenant_id' => $tenantId, 'name' => 'Test User', 'email' => 'test@example.com', 'status' => 'active'],
-                'roles' => $roles,
-                'permissions' => [],
-            ], 200),
+            '*/api/v1/me' => function ($request) {
+                $authHeader = $request->header('Authorization')[0] ?? '';
+                $sentToken = str_replace('Bearer ', '', $authHeader);
+
+                if (isset($this->identitiesByToken[$sentToken])) {
+                    return Http::response($this->identitiesByToken[$sentToken], 200);
+                }
+
+                return Http::response(['message' => 'Unauthenticated.'], 401);
+            },
         ]);
 
         return $token;

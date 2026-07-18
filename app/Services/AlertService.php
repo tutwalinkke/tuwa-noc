@@ -20,7 +20,7 @@ class AlertService
         }
 
         foreach ($recipients as $recipient) {
-            Mail::to($recipient['email'])->send(new DeviceDownAlert($device, $message));
+            Mail::to($recipient['email'])->queue(new DeviceDownAlert($device, $message));
         }
     }
 

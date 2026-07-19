@@ -21,6 +21,7 @@ Route::prefix('v1')->middleware('identity.auth')->group(function () {
     });
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
+    Route::get('/dashboard/bandwidth-history', [DashboardController::class, 'bandwidthHistory']);
 
     Route::get('/devices', [DeviceController::class, 'index']);
     Route::post('/devices', [DeviceController::class, 'store']);

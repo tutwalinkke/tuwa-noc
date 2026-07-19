@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Device;
 use App\Models\DeviceEvent;
+use App\Models\DeviceInterfaceMetric;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
@@ -36,10 +37,6 @@ class DashboardController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Uptime % per device: proportion of logged events where the
-        // device was recovering (up) vs going down, over its total
-        // event history. A device with zero events (never flapped)
-        // shows null — not enough history yet to compute a rate.
         $devices->each(function ($device) {
             $totalEvents = DeviceEvent::where('device_id', $device->id)->count();
             $downEvents = DeviceEvent::where('device_id', $device->id)
@@ -50,9 +47,6 @@ class DashboardController extends Controller
                 ? round((1 - ($downEvents / max($totalEvents, 1))) * 100, 1)
                 : null;
 
-            // Flatten each interface down to just what a dashboard needs —
-            // name, operational status, and current throughput — rather
-            // than exposing the full raw metric history per request.
             $device->interfaces_summary = $device->interfaces->map(function ($iface) {
                 $metric = $iface->latestMetric;
 
@@ -65,9 +59,6 @@ class DashboardController extends Controller
                 ];
             })->values();
 
-            // Total current throughput across all interfaces on this
-            // device — the single "RX data / TX data" style headline
-            // number a dashboard card would show.
             $device->total_in_bps = $device->interfaces_summary->sum('in_bps');
             $device->total_out_bps = $device->interfaces_summary->sum('out_bps');
 
@@ -110,5 +101,40 @@ class DashboardController extends Controller
             'devices' => $devices,
             'recent_events' => $recentEvents,
         ]);
+    }
+
+    /**
+     * Real, stored bandwidth history — aggregated in_bps/out_bps across
+     * every interface belonging to the tenant, grouped by poll timestamp.
+     * Not synthetic or interpolated: exactly what devices:poll-snmp
+     * actually recorded, every 5 minutes, capped to a recent window so
+     * the response stays small and the chart stays legible.
+     */
+    public function bandwidthHistory(Request $request)
+    {
+        $isSuperAdmin = $this->isSuperAdmin($request);
+        $tenantId = $this->tenantId($request);
+
+        $query = DeviceInterfaceMetric::query()
+            ->join('device_interfaces', 'device_interfaces.id', '=', 'device_interface_metrics.device_interface_id')
+            ->join('devices', 'devices.id', '=', 'device_interfaces.device_id')
+            ->selectRaw('device_interface_metrics.polled_at, SUM(device_interface_metrics.in_bps) as total_in_bps, SUM(device_interface_metrics.out_bps) as total_out_bps')
+            ->groupBy('device_interface_metrics.polled_at')
+            ->orderBy('device_interface_metrics.polled_at')
+            ->limit(200);
+
+        if (! $isSuperAdmin) {
+            $query->where('devices.tenant_id', $tenantId);
+        }
+
+        $history = $query->get()->map(function ($row) {
+            return [
+                'polled_at' => $row->polled_at,
+                'in_bps' => (int) $row->total_in_bps,
+                'out_bps' => (int) $row->total_out_bps,
+            ];
+        });
+
+        return response()->json(['history' => $history]);
     }
 }

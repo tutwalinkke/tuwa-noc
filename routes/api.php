@@ -9,6 +9,7 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\MaintenanceWindowController;
 
 Route::prefix('v1')->middleware('identity.auth')->group(function () {
 
@@ -49,5 +50,10 @@ Route::prefix('v1')->middleware('identity.auth')->group(function () {
     Route::post('/customers/{customerId}/devices', [CustomerController::class, 'linkDevice']);
 
     Route::get('/activity', [ActivityController::class, 'index']);
+
+    Route::get('/maintenance-windows', [MaintenanceWindowController::class, 'index']);
+    Route::post('/maintenance-windows', [MaintenanceWindowController::class, 'store']);
+    Route::post('/maintenance-windows/{id}/end-early', [MaintenanceWindowController::class, 'endEarly']);
+    Route::delete('/maintenance-windows/{id}', [MaintenanceWindowController::class, 'destroy']);
 
 });

@@ -183,18 +183,24 @@ class PollDeviceInterfaces extends Command
         }
 
         if ($isBreached) {
+            $inMaintenance = $device->isInMaintenance();
+
             $message = sprintf(
-                '%s %sbound traffic (%s Kbps) exceeded the alert threshold (%s Kbps).',
+                '%s %sbound traffic (%s Kbps) exceeded the alert threshold (%s Kbps)%s.',
                 $device->name,
                 $direction,
                 number_format($currentBps / 1000, 1),
-                number_format($thresholdBps / 1000, 1)
+                number_format($thresholdBps / 1000, 1),
+                $inMaintenance ? ' during a scheduled maintenance window' : ''
             );
 
+            // Same suppression pattern as PollDevices: still logged
+            // (at info, not warning, during maintenance), never
+            // silently discarded — only the email is skipped.
             DeviceEvent::create([
                 'device_id' => $device->id,
                 'tenant_id' => $device->tenant_id,
-                'severity' => 'warning',
+                'severity' => $inMaintenance ? 'info' : 'warning',
                 'type' => $eventType,
                 'previous_status' => 'normal',
                 'new_status' => 'breached',
@@ -202,7 +208,10 @@ class PollDeviceInterfaces extends Command
                 'created_at' => now(),
             ]);
 
-            $alertService->notifyBandwidthThreshold($device, $direction, $currentBps, $thresholdBps);
+            if (! $inMaintenance) {
+                $alertService->notifyBandwidthThreshold($device, $direction, $currentBps, $thresholdBps);
+            }
+
             $this->line("  <comment>{$message}</comment>");
         } else {
             $message = sprintf(

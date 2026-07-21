@@ -43,4 +43,25 @@ class Device extends Model
     {
         return $this->belongsTo(Customer::class);
     }
+
+    public function maintenanceWindows()
+    {
+        return $this->hasMany(MaintenanceWindow::class);
+    }
+
+    /**
+     * Whether this device is currently under a scheduled maintenance
+     * window — used to suppress alert emails (device-down and
+     * bandwidth threshold) without suppressing polling or event
+     * logging, so there's still a full record, just without the noise.
+     */
+    public function isInMaintenance(): bool
+    {
+        $now = now();
+
+        return $this->maintenanceWindows()
+            ->where('starts_at', '<=', $now)
+            ->where('ends_at', '>=', $now)
+            ->exists();
+    }
 }

@@ -39,5 +39,14 @@ return [
     'identity' => [
         'url' => env('IDENTITY_API_URL', 'https://identity.tuwalink.com/api/v1'),
         'service_token' => env('IDENTITY_SERVICE_TOKEN'),
+
+        // Accounts that exist for machine-to-machine auth (this NOC's own
+        // service account, and any future ones), not real humans who
+        // should receive alert emails — even though they may technically
+        // hold tenant-admin/super-admin roles for API access purposes.
+        // Comma-separated in .env; a real bug (noc-service@tuwalink.com
+        // receiving and permanently failing to accept bandwidth/device
+        // alert emails) was found and fixed by adding this exclusion.
+        'alert_excluded_emails' => array_filter(array_map('trim', explode(',', env('ALERT_EXCLUDED_EMAILS', 'noc-service@tuwalink.com')))),
     ],
 ];

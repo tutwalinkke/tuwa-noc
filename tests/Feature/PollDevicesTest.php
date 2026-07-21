@@ -125,6 +125,57 @@ class PollDevicesTest extends TestCase
         Mail::assertQueued(DeviceDownAlert::class);
     }
 
+    public function test_service_account_is_excluded_from_alert_recipients(): void
+    {
+        Mail::fake();
+
+        // Two candidate recipients: a genuine human admin, and the
+        // known NOC service account — which technically holds
+        // super-admin for API access purposes but must never actually
+        // receive alert emails. Real bug found and fixed: this
+        // exclusion did not exist before, and the service account's
+        // address (not a real monitored inbox) was silently failing
+        // delivery for every alert, forever.
+        Http::fake([
+            '*/api/v1/users*' => Http::response([
+                'users' => [
+                    [
+                        'id' => 1,
+                        'tenant_id' => 1,
+                        'email' => 'real-admin@example.com',
+                        'status' => 'active',
+                        'roles' => [['name' => 'super-admin']],
+                    ],
+                    [
+                        'id' => 2,
+                        'tenant_id' => 1,
+                        'email' => 'noc-service@tuwalink.com',
+                        'status' => 'active',
+                        'roles' => [['name' => 'super-admin']],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        Device::create([
+            'tenant_id' => 1,
+            'name' => 'Unreachable Test Address',
+            'ip_address' => '192.0.2.1',
+            'type' => 'server',
+            'status' => 'up',
+        ]);
+
+        $this->artisan('devices:poll');
+
+        Mail::assertQueued(DeviceDownAlert::class, function ($mail) {
+            return $mail->hasTo('real-admin@example.com');
+        });
+
+        Mail::assertNotQueued(DeviceDownAlert::class, function ($mail) {
+            return $mail->hasTo('noc-service@tuwalink.com');
+        });
+    }
+
     public function test_device_recovering_does_not_send_alert_email(): void
     {
         Mail::fake();

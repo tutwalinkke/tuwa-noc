@@ -54,6 +54,7 @@ class AlertService
         }
 
         $users = $response->json('users', []);
+        $excludedEmails = config('services.identity.alert_excluded_emails', []);
 
         return collect($users)
             ->filter(function ($user) {
@@ -61,6 +62,7 @@ class AlertService
                 return $roleNames->contains('tenant-admin') || $roleNames->contains('super-admin');
             })
             ->filter(fn ($user) => $user['status'] === 'active')
+            ->filter(fn ($user) => ! in_array($user['email'], $excludedEmails, true))
             ->values()
             ->all();
     }

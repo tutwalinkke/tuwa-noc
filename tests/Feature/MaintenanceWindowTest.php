@@ -10,6 +10,7 @@ use App\Models\Device;
 use App\Models\DeviceEvent;
 use App\Models\MaintenanceWindow;
 use App\Services\AlertService;
+use App\Services\IncidentService;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -259,9 +260,10 @@ class MaintenanceWindowTest extends TestCase
 
         $command = $this->makeInterfacesCommandWithOutput();
         $alertService = app(AlertService::class);
+        $incidentService = app(IncidentService::class);
 
         $this->callProtectedMethod($command, 'checkThresholdDirection', [
-            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService,
+            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService, $incidentService,
         ]);
 
         Mail::assertNotQueued(BandwidthThresholdAlert::class);

@@ -6,15 +6,16 @@ use App\Models\BillingAccount;
 use App\Models\Device;
 use App\Models\DeviceEvent;
 use App\Services\AlertService;
+use App\Services\IncidentService;
 use Illuminate\Console\Command;
 
 class PollDevices extends Command
 {
     protected $signature = 'devices:poll';
 
-    protected $description = 'Ping every device, update its status, log an event on any state change, and alert on critical events (unless the device is under a scheduled maintenance window).';
+    protected $description = 'Ping every device, update its status, log an event on any state change, track it as an incident if actionable, and alert on critical events (unless the device is under a scheduled maintenance window).';
 
-    public function handle(AlertService $alertService): int
+    public function handle(AlertService $alertService, IncidentService $incidentService): int
     {
         $blockedTenantIds = BillingAccount::where('status', 'blocked')->pluck('tenant_id');
         $devices = Device::whereNotIn('tenant_id', $blockedTenantIds)->get();
@@ -50,6 +51,7 @@ class PollDevices extends Command
             if ($previousStatus !== $newStatus) {
                 $inMaintenance = $device->isInMaintenance();
                 $event = $this->logStatusChangeEvent($device, $previousStatus, $newStatus, $inMaintenance);
+                $incidentService->maybeCreateFromEvent($event);
 
                 // Still logged either way — a maintenance window explains
                 // WHY it went down, it doesn't erase that it happened.

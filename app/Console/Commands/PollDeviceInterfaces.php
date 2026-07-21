@@ -7,6 +7,7 @@ use App\Models\DeviceEvent;
 use App\Models\DeviceInterface;
 use App\Models\DeviceInterfaceMetric;
 use App\Services\AlertService;
+use App\Services\IncidentService;
 use Illuminate\Console\Command;
 
 class PollDeviceInterfaces extends Command
@@ -30,7 +31,7 @@ class PollDeviceInterfaces extends Command
         7 => 'lowerLayerDown',
     ];
 
-    public function handle(AlertService $alertService): int
+    public function handle(AlertService $alertService, IncidentService $incidentService): int
     {
         $devices = Device::whereNotNull('snmp_community')->get();
 
@@ -42,7 +43,7 @@ class PollDeviceInterfaces extends Command
         $this->info("Polling SNMP for {$devices->count()} device(s)...");
 
         foreach ($devices as $device) {
-            $this->pollDevice($device, $alertService);
+            $this->pollDevice($device, $alertService, $incidentService);
         }
 
         $this->info('SNMP polling complete.');
@@ -63,7 +64,7 @@ class PollDeviceInterfaces extends Command
         return trim($cleaned, "\" \t\n\r\0\x0B");
     }
 
-    protected function pollDevice(Device $device, AlertService $alertService): void
+    protected function pollDevice(Device $device, AlertService $alertService, IncidentService $incidentService): void
     {
         snmp_set_oid_output_format(SNMP_OID_OUTPUT_NUMERIC);
 
@@ -142,17 +143,17 @@ class PollDeviceInterfaces extends Command
         }
 
         if ($anyRateComputed) {
-            $this->checkBandwidthThresholds($device, $totalInBps, $totalOutBps, $alertService);
+            $this->checkBandwidthThresholds($device, $totalInBps, $totalOutBps, $alertService, $incidentService);
         }
     }
 
-    protected function checkBandwidthThresholds(Device $device, int $totalInBps, int $totalOutBps, AlertService $alertService): void
+    protected function checkBandwidthThresholds(Device $device, int $totalInBps, int $totalOutBps, AlertService $alertService, IncidentService $incidentService): void
     {
-        $this->checkThresholdDirection($device, 'in', $totalInBps, $device->alert_threshold_in_bps, $alertService);
-        $this->checkThresholdDirection($device, 'out', $totalOutBps, $device->alert_threshold_out_bps, $alertService);
+        $this->checkThresholdDirection($device, 'in', $totalInBps, $device->alert_threshold_in_bps, $alertService, $incidentService);
+        $this->checkThresholdDirection($device, 'out', $totalOutBps, $device->alert_threshold_out_bps, $alertService, $incidentService);
     }
 
-    protected function checkThresholdDirection(Device $device, string $direction, int $currentBps, ?int $thresholdBps, AlertService $alertService): void
+    protected function checkThresholdDirection(Device $device, string $direction, int $currentBps, ?int $thresholdBps, AlertService $alertService, IncidentService $incidentService): void
     {
         if ($thresholdBps === null) {
             return;
@@ -196,8 +197,10 @@ class PollDeviceInterfaces extends Command
 
             // Same suppression pattern as PollDevices: still logged
             // (at info, not warning, during maintenance), never
-            // silently discarded — only the email is skipped.
-            DeviceEvent::create([
+            // silently discarded — only the email is skipped. Incident
+            // creation naturally follows the same rule for free, since
+            // IncidentService only tracks critical/warning severity.
+            $event = DeviceEvent::create([
                 'device_id' => $device->id,
                 'tenant_id' => $device->tenant_id,
                 'severity' => $inMaintenance ? 'info' : 'warning',
@@ -207,6 +210,8 @@ class PollDeviceInterfaces extends Command
                 'message' => $message,
                 'created_at' => now(),
             ]);
+
+            $incidentService->maybeCreateFromEvent($event);
 
             if (! $inMaintenance) {
                 $alertService->notifyBandwidthThreshold($device, $direction, $currentBps, $thresholdBps);

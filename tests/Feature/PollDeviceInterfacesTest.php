@@ -9,6 +9,7 @@ use App\Models\DeviceEvent;
 use App\Models\DeviceInterface;
 use App\Models\DeviceInterfaceMetric;
 use App\Services\AlertService;
+use App\Services\IncidentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -244,9 +245,10 @@ class PollDeviceInterfacesTest extends TestCase
 
         $command = $this->makeCommandWithOutput();
         $alertService = app(AlertService::class);
+        $incidentService = app(IncidentService::class);
 
         $this->callProtectedMethod($command, 'checkThresholdDirection', [
-            $device, 'in', 5_000_000, $device->alert_threshold_in_bps, $alertService,
+            $device, 'in', 5_000_000, $device->alert_threshold_in_bps, $alertService, $incidentService,
         ]);
 
         $this->assertSame(0, DeviceEvent::count());
@@ -264,9 +266,10 @@ class PollDeviceInterfacesTest extends TestCase
 
         $command = $this->makeCommandWithOutput();
         $alertService = app(AlertService::class);
+        $incidentService = app(IncidentService::class);
 
         $this->callProtectedMethod($command, 'checkThresholdDirection', [
-            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService,
+            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService, $incidentService,
         ]);
 
         $event = DeviceEvent::first();
@@ -289,9 +292,10 @@ class PollDeviceInterfacesTest extends TestCase
 
         $command = $this->makeCommandWithOutput();
         $alertService = app(AlertService::class);
+        $incidentService = app(IncidentService::class);
 
         $this->callProtectedMethod($command, 'checkThresholdDirection', [
-            $device, 'in', 1_000_000, $device->alert_threshold_in_bps, $alertService,
+            $device, 'in', 1_000_000, $device->alert_threshold_in_bps, $alertService, $incidentService,
         ]);
 
         $this->assertSame(0, DeviceEvent::count());
@@ -310,16 +314,17 @@ class PollDeviceInterfacesTest extends TestCase
 
         $command = $this->makeCommandWithOutput();
         $alertService = app(AlertService::class);
+        $incidentService = app(IncidentService::class);
 
         // First poll over threshold — genuine transition, should alert.
         $this->callProtectedMethod($command, 'checkThresholdDirection', [
-            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService,
+            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService, $incidentService,
         ]);
 
         // Second poll, still over threshold — sustained condition, not
         // a new transition. Must not create a second event or resend.
         $this->callProtectedMethod($command, 'checkThresholdDirection', [
-            $device, 'in', 2_500_000, $device->alert_threshold_in_bps, $alertService,
+            $device, 'in', 2_500_000, $device->alert_threshold_in_bps, $alertService, $incidentService,
         ]);
 
         $this->assertSame(1, DeviceEvent::count());
@@ -338,13 +343,14 @@ class PollDeviceInterfacesTest extends TestCase
 
         $command = $this->makeCommandWithOutput();
         $alertService = app(AlertService::class);
+        $incidentService = app(IncidentService::class);
 
         // Breach, then recover.
         $this->callProtectedMethod($command, 'checkThresholdDirection', [
-            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService,
+            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService, $incidentService,
         ]);
         $this->callProtectedMethod($command, 'checkThresholdDirection', [
-            $device, 'in', 500_000, $device->alert_threshold_in_bps, $alertService,
+            $device, 'in', 500_000, $device->alert_threshold_in_bps, $alertService, $incidentService,
         ]);
 
         $this->assertSame(2, DeviceEvent::count());
@@ -370,10 +376,11 @@ class PollDeviceInterfacesTest extends TestCase
 
         $command = $this->makeCommandWithOutput();
         $alertService = app(AlertService::class);
+        $incidentService = app(IncidentService::class);
 
         // Only outbound breaches; inbound stays fine.
         $this->callProtectedMethod($command, 'checkBandwidthThresholds', [
-            $device, 200_000, 800_000, $alertService,
+            $device, 200_000, 800_000, $alertService, $incidentService,
         ]);
 
         $inEvent = DeviceEvent::where('type', 'bandwidth_threshold_in')->first();

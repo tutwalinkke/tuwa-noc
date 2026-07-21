@@ -11,6 +11,7 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\MaintenanceWindowController;
 use App\Http\Controllers\IncidentController;
+use App\Http\Controllers\TopologyController;
 
 Route::prefix('v1')->middleware('identity.auth')->group(function () {
 
@@ -60,5 +61,9 @@ Route::prefix('v1')->middleware('identity.auth')->group(function () {
     Route::get('/incidents', [IncidentController::class, 'index']);
     Route::post('/incidents/{id}/acknowledge', [IncidentController::class, 'acknowledge']);
     Route::post('/incidents/{id}/resolve', [IncidentController::class, 'resolve']);
+
+    Route::get('/topology', [TopologyController::class, 'index']);
+    Route::post('/topology/links', [TopologyController::class, 'storeLink']);
+    Route::delete('/topology/links/{id}', [TopologyController::class, 'destroyLink']);
 
 });

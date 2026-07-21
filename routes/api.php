@@ -10,6 +10,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\MaintenanceWindowController;
+use App\Http\Controllers\IncidentController;
 
 Route::prefix('v1')->middleware('identity.auth')->group(function () {
 
@@ -55,5 +56,9 @@ Route::prefix('v1')->middleware('identity.auth')->group(function () {
     Route::post('/maintenance-windows', [MaintenanceWindowController::class, 'store']);
     Route::post('/maintenance-windows/{id}/end-early', [MaintenanceWindowController::class, 'endEarly']);
     Route::delete('/maintenance-windows/{id}', [MaintenanceWindowController::class, 'destroy']);
+
+    Route::get('/incidents', [IncidentController::class, 'index']);
+    Route::post('/incidents/{id}/acknowledge', [IncidentController::class, 'acknowledge']);
+    Route::post('/incidents/{id}/resolve', [IncidentController::class, 'resolve']);
 
 });

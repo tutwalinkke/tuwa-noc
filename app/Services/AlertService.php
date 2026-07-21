@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Mail\BandwidthThresholdAlert;
 use App\Mail\DeviceDownAlert;
+use App\Mail\IncidentEscalationAlert;
 use App\Models\Device;
+use App\Models\Incident;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -36,6 +38,20 @@ class AlertService
 
         foreach ($recipients as $recipient) {
             Mail::to($recipient['email'])->queue(new BandwidthThresholdAlert($device, $direction, $currentBps, $thresholdBps));
+        }
+    }
+
+    public function notifyIncidentEscalation(Incident $incident, int $minutesOpen): void
+    {
+        $recipients = $this->getResponsibleUsers($incident->tenant_id);
+
+        if (empty($recipients)) {
+            Log::warning("No tenant-admin/super-admin users found for tenant {$incident->tenant_id} — escalation not sent for incident {$incident->id}.");
+            return;
+        }
+
+        foreach ($recipients as $recipient) {
+            Mail::to($recipient['email'])->queue(new IncidentEscalationAlert($incident, $minutesOpen));
         }
     }
 

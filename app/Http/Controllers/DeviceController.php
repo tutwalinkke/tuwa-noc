@@ -52,6 +52,8 @@ class DeviceController extends Controller
             'model' => 'nullable|string|max:255',
             'site' => 'nullable|string|max:255',
             'snmp_community' => 'nullable|string|max:255',
+            'alert_threshold_in_bps' => 'nullable|integer|min:1',
+            'alert_threshold_out_bps' => 'nullable|integer|min:1',
         ]);
 
         $device = Device::create([
@@ -95,6 +97,8 @@ class DeviceController extends Controller
             'model' => 'nullable|string|max:255',
             'site' => 'nullable|string|max:255',
             'snmp_community' => 'nullable|string|max:255',
+            'alert_threshold_in_bps' => 'nullable|integer|min:1',
+            'alert_threshold_out_bps' => 'nullable|integer|min:1',
         ]);
 
         $device->update($validated);

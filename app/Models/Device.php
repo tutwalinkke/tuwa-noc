@@ -19,6 +19,8 @@ class Device extends Model
         'site',
         'customer_id',
         'snmp_community',
+        'alert_threshold_in_bps',
+        'alert_threshold_out_bps',
         'status',
         'last_checked_at',
         'last_seen_up_at',

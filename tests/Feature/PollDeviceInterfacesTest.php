@@ -3,11 +3,19 @@
 namespace Tests\Feature;
 
 use App\Console\Commands\PollDeviceInterfaces;
+use App\Mail\BandwidthThresholdAlert;
 use App\Models\Device;
+use App\Models\DeviceEvent;
 use App\Models\DeviceInterface;
 use App\Models\DeviceInterfaceMetric;
+use App\Services\AlertService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Console\OutputStyle;
 use ReflectionMethod;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
 use Tests\TestCase;
 
 class PollDeviceInterfacesTest extends TestCase
@@ -20,6 +28,41 @@ class PollDeviceInterfacesTest extends TestCase
         $reflection->setAccessible(true);
 
         return $reflection->invokeArgs($instance, $args);
+    }
+
+    /**
+     * Threshold-checking methods call $this->line() for console
+     * output, which requires the command to have a bound output
+     * stream — normally set up by Laravel's console kernel when a
+     * command actually runs via artisan. Directly instantiating the
+     * command and reflectively invoking protected methods (needed to
+     * unit-test the threshold logic in isolation, same pattern as the
+     * existing computeRates tests) skips that setup entirely, so it
+     * has to be done manually here.
+     */
+    protected function makeCommandWithOutput(): PollDeviceInterfaces
+    {
+        $command = new PollDeviceInterfaces();
+        $command->setOutput(new OutputStyle(new ArrayInput([]), new NullOutput()));
+
+        return $command;
+    }
+
+    protected function fakeIdentityUsers(int $tenantId): void
+    {
+        Http::fake([
+            '*/api/v1/users*' => Http::response([
+                'users' => [
+                    [
+                        'id' => 1,
+                        'tenant_id' => $tenantId,
+                        'email' => 'admin@example.com',
+                        'status' => 'active',
+                        'roles' => [['name' => 'super-admin']],
+                    ],
+                ],
+            ], 200),
+        ]);
     }
 
     // --- Integration: real SNMP walk against local snmpd on 127.0.0.1 ---
@@ -188,5 +231,156 @@ class PollDeviceInterfacesTest extends TestCase
 
         $this->assertNull($inBps);
         $this->assertNull($outBps);
+    }
+
+    // --- Bandwidth threshold alerting ---
+
+    public function test_threshold_check_does_nothing_when_no_threshold_set(): void
+    {
+        $device = Device::create([
+            'tenant_id' => 1, 'name' => 'D', 'ip_address' => '127.0.0.1', 'type' => 'server', 'status' => 'up',
+            'alert_threshold_in_bps' => null,
+        ]);
+
+        $command = $this->makeCommandWithOutput();
+        $alertService = app(AlertService::class);
+
+        $this->callProtectedMethod($command, 'checkThresholdDirection', [
+            $device, 'in', 5_000_000, $device->alert_threshold_in_bps, $alertService,
+        ]);
+
+        $this->assertSame(0, DeviceEvent::count());
+    }
+
+    public function test_breaching_threshold_creates_warning_event_and_sends_alert(): void
+    {
+        Mail::fake();
+        $this->fakeIdentityUsers(tenantId: 1);
+
+        $device = Device::create([
+            'tenant_id' => 1, 'name' => 'D', 'ip_address' => '127.0.0.1', 'type' => 'server', 'status' => 'up',
+            'alert_threshold_in_bps' => 1_000_000,
+        ]);
+
+        $command = $this->makeCommandWithOutput();
+        $alertService = app(AlertService::class);
+
+        $this->callProtectedMethod($command, 'checkThresholdDirection', [
+            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService,
+        ]);
+
+        $event = DeviceEvent::first();
+        $this->assertNotNull($event);
+        $this->assertSame('warning', $event->severity);
+        $this->assertSame('bandwidth_threshold_in', $event->type);
+        $this->assertSame('breached', $event->new_status);
+
+        Mail::assertQueued(BandwidthThresholdAlert::class);
+    }
+
+    public function test_staying_under_threshold_does_not_create_an_event(): void
+    {
+        Mail::fake();
+
+        $device = Device::create([
+            'tenant_id' => 1, 'name' => 'D', 'ip_address' => '127.0.0.1', 'type' => 'server', 'status' => 'up',
+            'alert_threshold_in_bps' => 5_000_000,
+        ]);
+
+        $command = $this->makeCommandWithOutput();
+        $alertService = app(AlertService::class);
+
+        $this->callProtectedMethod($command, 'checkThresholdDirection', [
+            $device, 'in', 1_000_000, $device->alert_threshold_in_bps, $alertService,
+        ]);
+
+        $this->assertSame(0, DeviceEvent::count());
+        Mail::assertNotQueued(BandwidthThresholdAlert::class);
+    }
+
+    public function test_sustained_breach_does_not_repeat_the_alert_every_poll(): void
+    {
+        Mail::fake();
+        $this->fakeIdentityUsers(tenantId: 1);
+
+        $device = Device::create([
+            'tenant_id' => 1, 'name' => 'D', 'ip_address' => '127.0.0.1', 'type' => 'server', 'status' => 'up',
+            'alert_threshold_in_bps' => 1_000_000,
+        ]);
+
+        $command = $this->makeCommandWithOutput();
+        $alertService = app(AlertService::class);
+
+        // First poll over threshold — genuine transition, should alert.
+        $this->callProtectedMethod($command, 'checkThresholdDirection', [
+            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService,
+        ]);
+
+        // Second poll, still over threshold — sustained condition, not
+        // a new transition. Must not create a second event or resend.
+        $this->callProtectedMethod($command, 'checkThresholdDirection', [
+            $device, 'in', 2_500_000, $device->alert_threshold_in_bps, $alertService,
+        ]);
+
+        $this->assertSame(1, DeviceEvent::count());
+        Mail::assertQueued(BandwidthThresholdAlert::class, 1);
+    }
+
+    public function test_recovering_below_threshold_logs_an_info_event_without_alerting(): void
+    {
+        Mail::fake();
+        $this->fakeIdentityUsers(tenantId: 1);
+
+        $device = Device::create([
+            'tenant_id' => 1, 'name' => 'D', 'ip_address' => '127.0.0.1', 'type' => 'server', 'status' => 'up',
+            'alert_threshold_in_bps' => 1_000_000,
+        ]);
+
+        $command = $this->makeCommandWithOutput();
+        $alertService = app(AlertService::class);
+
+        // Breach, then recover.
+        $this->callProtectedMethod($command, 'checkThresholdDirection', [
+            $device, 'in', 2_000_000, $device->alert_threshold_in_bps, $alertService,
+        ]);
+        $this->callProtectedMethod($command, 'checkThresholdDirection', [
+            $device, 'in', 500_000, $device->alert_threshold_in_bps, $alertService,
+        ]);
+
+        $this->assertSame(2, DeviceEvent::count());
+
+        $latestEvent = DeviceEvent::orderByDesc('created_at')->orderByDesc('id')->first();
+        $this->assertSame('info', $latestEvent->severity);
+        $this->assertSame('normal', $latestEvent->new_status);
+
+        // Only ONE alert email — the original breach, not the recovery.
+        Mail::assertQueued(BandwidthThresholdAlert::class, 1);
+    }
+
+    public function test_in_and_out_thresholds_are_tracked_independently(): void
+    {
+        Mail::fake();
+        $this->fakeIdentityUsers(tenantId: 1);
+
+        $device = Device::create([
+            'tenant_id' => 1, 'name' => 'D', 'ip_address' => '127.0.0.1', 'type' => 'server', 'status' => 'up',
+            'alert_threshold_in_bps' => 1_000_000,
+            'alert_threshold_out_bps' => 500_000,
+        ]);
+
+        $command = $this->makeCommandWithOutput();
+        $alertService = app(AlertService::class);
+
+        // Only outbound breaches; inbound stays fine.
+        $this->callProtectedMethod($command, 'checkBandwidthThresholds', [
+            $device, 200_000, 800_000, $alertService,
+        ]);
+
+        $inEvent = DeviceEvent::where('type', 'bandwidth_threshold_in')->first();
+        $outEvent = DeviceEvent::where('type', 'bandwidth_threshold_out')->first();
+
+        $this->assertNull($inEvent);
+        $this->assertNotNull($outEvent);
+        $this->assertSame('breached', $outEvent->new_status);
     }
 }

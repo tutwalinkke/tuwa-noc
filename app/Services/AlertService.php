@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\BandwidthThresholdAlert;
 use App\Mail\DeviceDownAlert;
 use App\Models\Device;
 use Illuminate\Support\Facades\Http;
@@ -21,6 +22,20 @@ class AlertService
 
         foreach ($recipients as $recipient) {
             Mail::to($recipient['email'])->queue(new DeviceDownAlert($device, $message));
+        }
+    }
+
+    public function notifyBandwidthThreshold(Device $device, string $direction, int $currentBps, int $thresholdBps): void
+    {
+        $recipients = $this->getResponsibleUsers($device->tenant_id);
+
+        if (empty($recipients)) {
+            Log::warning("No tenant-admin/super-admin users found for tenant {$device->tenant_id} — bandwidth alert not sent for device {$device->id}.");
+            return;
+        }
+
+        foreach ($recipients as $recipient) {
+            Mail::to($recipient['email'])->queue(new BandwidthThresholdAlert($device, $direction, $currentBps, $thresholdBps));
         }
     }
 

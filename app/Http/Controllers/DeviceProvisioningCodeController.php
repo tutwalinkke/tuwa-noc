@@ -140,11 +140,17 @@ class DeviceProvisioningCodeController extends Controller
             'used_at' => now(),
         ]);
 
+        // JSON_UNESCAPED_SLASHES matters here specifically: WireGuard
+        // base64 keys routinely contain '/' characters, and a RouterOS
+        // script parsing this response has to do its own string
+        // manipulation to extract fields — asking it to also handle
+        // Laravel's default '\/' escaping is unnecessary complexity
+        // this endpoint can simply not create for every future client.
         return response()->json([
             'device_id' => $device->id,
             'assigned_ip' => $assignedIp,
             'server_public_key' => $wireGuard->serverPublicKey(),
             'server_endpoint' => $wireGuard->serverEndpoint(),
-        ], 201);
+        ], 201, [], JSON_UNESCAPED_SLASHES);
     }
 }

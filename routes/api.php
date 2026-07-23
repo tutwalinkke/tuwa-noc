@@ -24,6 +24,12 @@ Route::prefix('v1')->group(function () {
     Route::post('/provisioning-codes/redeem', [DeviceProvisioningCodeController::class, 'redeem'])
         ->middleware('throttle:10,1');
 
+    // Polled by the Portal while waiting for a device to connect —
+    // lighter throttle than redeem since it's read-only, but still
+    // rate limited since it's outside identity.auth.
+    Route::get('/provisioning-codes/{code}/status', [DeviceProvisioningCodeController::class, 'status'])
+        ->middleware('throttle:60,1');
+
     Route::middleware('identity.auth')->group(function () {
 
         Route::get('/ping', function (Request $request) {

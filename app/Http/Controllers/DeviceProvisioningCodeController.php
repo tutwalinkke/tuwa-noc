@@ -53,6 +53,43 @@ class DeviceProvisioningCodeController extends Controller
      * single-use, short-lived, and rate-limited (see routes/api.php).
      * A leaked code is a real risk for 15 minutes, not indefinitely.
      */
+    /**
+     * Public, code-authenticated status check — same trust model as
+     * redeem() itself, since this just tells the Portal (which
+     * already generated and displayed the code) whether provisioning
+     * has completed and the device is reachable. Deliberately not a
+     * generic device-lookup endpoint; it only ever answers "for THIS
+     * code, what happened."
+     */
+    public function status(Request $request, string $code)
+    {
+        $provisioningCode = DeviceProvisioningCode::where('code', $code)->first();
+
+        if (! $provisioningCode) {
+            return response()->json(['message' => 'Invalid provisioning code.'], 404);
+        }
+
+        if (! $provisioningCode->isUsed()) {
+            return response()->json(['status' => 'waiting_for_redemption']);
+        }
+
+        $device = $provisioningCode->device;
+
+        if (! $device) {
+            // Genuinely shouldn't happen — used_at is only ever set
+            // alongside device_id in redeem() — but fail informatively
+            // rather than crash if it somehow does.
+            return response()->json(['status' => 'redeemed_no_device']);
+        }
+
+        return response()->json([
+            'status' => $device->status === 'up' ? 'connected' : 'waiting_for_connection',
+            'device_id' => $device->id,
+            'device_name' => $device->name,
+            'device_status' => $device->status,
+        ]);
+    }
+
     public function redeem(Request $request, WireGuardService $wireGuard)
     {
         $validated = $request->validate([

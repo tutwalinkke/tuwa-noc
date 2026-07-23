@@ -212,6 +212,95 @@ class DeviceProvisioningCodeTest extends TestCase
         $response->assertStatus(404);
     }
 
+    // --- Status polling ---
+
+    public function test_status_shows_waiting_for_redemption_before_use(): void
+    {
+        $code = DeviceProvisioningCode::create([
+            'code' => 'a-real-test-code',
+            'tenant_id' => 1,
+            'device_type' => 'router',
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $response = $this->getJson("/api/v1/provisioning-codes/{$code->code}/status");
+
+        $response->assertStatus(200);
+        $response->assertJson(['status' => 'waiting_for_redemption']);
+    }
+
+    public function test_status_shows_waiting_for_connection_after_redemption_before_device_is_up(): void
+    {
+        $this->mockWireGuardSuccess();
+
+        $code = DeviceProvisioningCode::create([
+            'code' => 'a-real-test-code',
+            'tenant_id' => 1,
+            'device_type' => 'router',
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $this->postJson('/api/v1/provisioning-codes/redeem', [
+            'code' => $code->code,
+            'wireguard_public_key' => str_repeat('A', 44),
+        ]);
+
+        // The device was just created with status 'unknown' — the
+        // polling cron hasn't had a chance to ping it yet.
+        $response = $this->getJson("/api/v1/provisioning-codes/{$code->code}/status");
+
+        $response->assertStatus(200);
+        $response->assertJson(['status' => 'waiting_for_connection']);
+    }
+
+    public function test_status_shows_connected_once_the_device_is_genuinely_up(): void
+    {
+        $this->mockWireGuardSuccess();
+
+        $code = DeviceProvisioningCode::create([
+            'code' => 'a-real-test-code',
+            'tenant_id' => 1,
+            'device_type' => 'router',
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $this->postJson('/api/v1/provisioning-codes/redeem', [
+            'code' => $code->code,
+            'wireguard_public_key' => str_repeat('A', 44),
+        ]);
+
+        // Simulate the poll cron having successfully reached the
+        // device by the time this status check runs.
+        Device::where('id', $code->fresh()->device_id)->update(['status' => 'up']);
+
+        $response = $this->getJson("/api/v1/provisioning-codes/{$code->code}/status");
+
+        $response->assertStatus(200);
+        $response->assertJson(['status' => 'connected']);
+    }
+
+    public function test_status_for_unknown_code_returns_404(): void
+    {
+        $response = $this->getJson('/api/v1/provisioning-codes/does-not-exist/status');
+        $response->assertStatus(404);
+    }
+
+    public function test_status_check_does_not_require_authentication(): void
+    {
+        $code = DeviceProvisioningCode::create([
+            'code' => 'a-real-test-code',
+            'tenant_id' => 1,
+            'device_type' => 'router',
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        // No Authorization header — this must work for an anonymous
+        // Portal poll, same trust model as redeem() itself.
+        $response = $this->getJson("/api/v1/provisioning-codes/{$code->code}/status");
+
+        $response->assertStatus(200);
+    }
+
     public function test_redeem_fails_gracefully_when_no_wireguard_ips_remain(): void
     {
         $this->partialMock(WireGuardService::class, function ($mock) {

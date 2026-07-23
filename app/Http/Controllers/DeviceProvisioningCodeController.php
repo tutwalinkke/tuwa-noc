@@ -26,12 +26,14 @@ class DeviceProvisioningCodeController extends Controller
     {
         $validated = $request->validate([
             'device_type' => 'nullable|in:router,switch,olt,server,ups,access_point,other',
+            'device_name' => 'nullable|string|max:255',
         ]);
 
         $code = DeviceProvisioningCode::create([
             'code' => Str::random(40),
             'tenant_id' => $this->tenantId($request),
             'device_type' => $validated['device_type'] ?? 'router',
+            'device_name' => $validated['device_name'] ?? null,
             'created_by_user_id' => $request->attributes->get('identity_user')['id'] ?? null,
             'expires_at' => now()->addMinutes(15),
         ]);
@@ -80,9 +82,13 @@ class DeviceProvisioningCodeController extends Controller
             return response()->json(['message' => 'Could not establish the WireGuard tunnel. Please try again.'], 500);
         }
 
+        // The name chosen up front in the Portal (when the code was
+        // generated) takes priority over whatever the router itself
+        // sends — the person provisioning it is the authoritative
+        // source, not an arbitrary field a router happens to include.
         $device = Device::create([
             'tenant_id' => $provisioningCode->tenant_id,
-            'name' => $validated['device_name'] ?? 'Provisioned Device',
+            'name' => $provisioningCode->device_name ?? $validated['device_name'] ?? 'Provisioned Device',
             'ip_address' => $assignedIp,
             'type' => $provisioningCode->device_type,
             'status' => 'unknown',

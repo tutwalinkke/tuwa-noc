@@ -10,6 +10,7 @@ class DeviceProvisioningCode extends Model
         'code',
         'tenant_id',
         'device_type',
+        'device_name',
         'created_by_user_id',
         'device_id',
         'wireguard_public_key',

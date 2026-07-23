@@ -112,6 +112,32 @@ class DeviceProvisioningCodeTest extends TestCase
         $this->assertSame('10.20.0.7', $device->wireguard_ip);
     }
 
+    public function test_name_chosen_when_generating_the_code_takes_priority_over_redemption_payload(): void
+    {
+        $this->mockWireGuardSuccess();
+
+        $code = DeviceProvisioningCode::create([
+            'code' => 'a-real-test-code',
+            'tenant_id' => 1,
+            'device_type' => 'olt',
+            'device_name' => 'Chosen Up Front',
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $this->postJson('/api/v1/provisioning-codes/redeem', [
+            'code' => $code->code,
+            'wireguard_public_key' => str_repeat('A', 44),
+            // The router itself sends a different name — the person
+            // who generated the code (via the Portal) should win,
+            // not an arbitrary field a router happens to include.
+            'device_name' => 'Whatever The Router Sends',
+        ]);
+
+        $device = Device::first();
+        $this->assertSame('Chosen Up Front', $device->name);
+        $this->assertSame('olt', $device->type);
+    }
+
     public function test_redeem_marks_the_code_as_used(): void
     {
         $this->mockWireGuardSuccess();

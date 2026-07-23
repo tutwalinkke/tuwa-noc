@@ -119,6 +119,15 @@ class DeviceProvisioningCodeController extends Controller
             return response()->json(['message' => 'Could not establish the WireGuard tunnel. Please try again.'], 500);
         }
 
+        // Randomly generated per device — deliberately never a
+        // shared community string across the fleet, since that would
+        // mean a single leaked/guessed community grants read access
+        // to every device, not just one. Combined with SNMP being
+        // configured (by the RouterOS script) to only accept
+        // connections from our own tunnel IP, not the WAN/LAN, this
+        // is a real, meaningfully scoped credential per device.
+        $snmpCommunity = Str::random(24);
+
         // The name chosen up front in the Portal (when the code was
         // generated) takes priority over whatever the router itself
         // sends — the person provisioning it is the authoritative
@@ -131,6 +140,7 @@ class DeviceProvisioningCodeController extends Controller
             'status' => 'unknown',
             'wireguard_ip' => $assignedIp,
             'wireguard_public_key' => $validated['wireguard_public_key'],
+            'snmp_community' => $snmpCommunity,
         ]);
 
         $provisioningCode->update([
@@ -151,6 +161,8 @@ class DeviceProvisioningCodeController extends Controller
             'assigned_ip' => $assignedIp,
             'server_public_key' => $wireGuard->serverPublicKey(),
             'server_endpoint' => $wireGuard->serverEndpoint(),
+            'snmp_community' => $snmpCommunity,
+            'server_wireguard_ip' => '10.20.0.1',
         ], 201, [], JSON_UNESCAPED_SLASHES);
     }
 }

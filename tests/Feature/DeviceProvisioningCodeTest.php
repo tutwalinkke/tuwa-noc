@@ -112,6 +112,68 @@ class DeviceProvisioningCodeTest extends TestCase
         $this->assertSame('10.20.0.7', $device->wireguard_ip);
     }
 
+    public function test_redeem_generates_a_real_snmp_community_and_returns_it(): void
+    {
+        $this->mockWireGuardSuccess();
+
+        $code = DeviceProvisioningCode::create([
+            'code' => 'a-real-test-code',
+            'tenant_id' => 1,
+            'device_type' => 'router',
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $response = $this->postJson('/api/v1/provisioning-codes/redeem', [
+            'code' => $code->code,
+            'wireguard_public_key' => str_repeat('A', 44),
+        ]);
+
+        $device = Device::first();
+        $this->assertNotNull($device->snmp_community);
+        $this->assertSame(24, strlen($device->snmp_community));
+
+        // The community returned in the response must be the exact
+        // same one saved on the device — the RouterOS script uses
+        // this value to configure the router's own SNMP agent, so a
+        // mismatch here would mean the two sides never agree.
+        $response->assertJson(['snmp_community' => $device->snmp_community]);
+    }
+
+    public function test_snmp_community_is_never_reused_between_devices(): void
+    {
+        // Each redemption needs a genuinely distinct assigned IP, same
+        // as real production behavior — devices.wireguard_ip has a
+        // real unique constraint, so a mock returning the same IP
+        // twice (unlike the real WireGuardService, which queries
+        // actual current usage) would silently fail the second
+        // Device::create() and produce only one device, not two.
+        $this->partialMock(WireGuardService::class, function ($mock) {
+            $mock->shouldReceive('nextAvailableIp')->andReturn('10.20.0.5', '10.20.0.6');
+            $mock->shouldReceive('addPeer')->andReturn(true);
+            $mock->shouldReceive('serverPublicKey')->andReturn('fake-server-public-key');
+            $mock->shouldReceive('serverEndpoint')->andReturn('129.121.102.51:51821');
+        });
+
+        $codeOne = DeviceProvisioningCode::create([
+            'code' => 'code-one', 'tenant_id' => 1, 'device_type' => 'router', 'expires_at' => now()->addMinutes(15),
+        ]);
+        $codeTwo = DeviceProvisioningCode::create([
+            'code' => 'code-two', 'tenant_id' => 1, 'device_type' => 'router', 'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $this->postJson('/api/v1/provisioning-codes/redeem', [
+            'code' => $codeOne->code, 'wireguard_public_key' => str_repeat('A', 44),
+        ]);
+        $this->postJson('/api/v1/provisioning-codes/redeem', [
+            'code' => $codeTwo->code, 'wireguard_public_key' => str_repeat('B', 44),
+        ]);
+
+        $this->assertSame(2, Device::count());
+
+        $devices = Device::orderBy('id')->pluck('snmp_community');
+        $this->assertNotEquals($devices[0], $devices[1]);
+    }
+
     public function test_name_chosen_when_generating_the_code_takes_priority_over_redemption_payload(): void
     {
         $this->mockWireGuardSuccess();

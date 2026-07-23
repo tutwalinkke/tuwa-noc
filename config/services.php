@@ -49,4 +49,9 @@ return [
         // alert emails) was found and fixed by adding this exclusion.
         'alert_excluded_emails' => array_filter(array_map('trim', explode(',', env('ALERT_EXCLUDED_EMAILS', 'noc-service@tuwalink.com')))),
     ],
+
+    'wireguard' => [
+        'server_public_key' => env('SERVER_PUBLIC_KEY'),
+        'endpoint' => env('WIREGUARD_ENDPOINT', '129.121.102.51:51821'),
+    ],
 ];

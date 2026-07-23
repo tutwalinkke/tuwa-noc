@@ -19,6 +19,8 @@ class Device extends Model
         'site',
         'customer_id',
         'snmp_community',
+        'wireguard_ip',
+        'wireguard_public_key',
         'alert_threshold_in_bps',
         'alert_threshold_out_bps',
         'status',
